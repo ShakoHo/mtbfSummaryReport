@@ -29,11 +29,12 @@ def main(){
 
 def getRunDetailAndSummary(jobObj, logDirPath){
 	runDetailList = []
-	sumResult = [totalNo:0, totalHrs:0, minHr:9999999, maxHr:-1]
+	sumResult = [totalNo:0, totalHrs:0, minHr:9999999, maxHr:-1, failedAllocateDeviceNo:0, stillRunningNo:0]
 	for (build in jobObj.getBuilds()) {
 		if (now.time.time/1000 - build.getTimestamp().time.time/1000 < oneWeekInSec){
 			jobDetail = [:]
 			sumResult['totalNo'] += 1
+			jobDetail['stillRunning']  = build.isInProgress()
 			if (build.getEnvVars()['MTBF_CONF'] != null){
 				jobDetail['mtbfConf'] = build.getEnvVars()['MTBF_CONF'].split('/')[-1]
 			}else{
@@ -42,40 +43,64 @@ def getRunDetailAndSummary(jobObj, logDirPath){
 			jobDetail['memSize'] = build.getEnvVars()['MEMORYSIZE']
 			jobDetail['buildID'] = build.getId()
 			jobDetail['buildNO'] = build.number
-			jobDetail['durationInSec'] = build.duration
-			jobDetail['durationInHr']  = build.duration/1000/60/60
-			sumResult['totalHrs'] += jobDetail['durationInHr']
-			if (jobDetail['durationInHr'] < sumResult['minHr']){
-				sumResult['minHr'] = jobDetail['durationInHr']
-			}
-			if (jobDetail['durationInHr'] > sumResult['maxHr']){
-				sumResult['maxHr'] = jobDetail['durationInHr']
-			}
-
-			jobDetail['stillRunning']  = build.isInProgress()
 			consoleLogPath = [logDirPath, jobDetail['buildNO'], 'log'].join(File.separator)
-			consoleLogCtnt = new File(consoleLogPath).text
-			idIndicator = consoleLogCtnt.indexOf('serial')
-			if (idIndicator >= 0){
-				tmpString = consoleLogCtnt.getAt(idIndicator..idIndicator+25)
-				jobDetail['deviceId'] = tmpString.getAt(tmpString.indexOf('[')+1..tmpString.indexOf(']')-1)
+			jobDetail['deviceId'] = getDeviceId(consoleLogPath)
+			if (jobDetail['stillRunning'] == false){
+				jobDetail['durationInSec'] = build.duration
 			}else{
-				jobDetail['deviceId'] = 'NA'
+				jobDetail['durationInSec'] = getCurrentRunningTime(consoleLogPath)
+			}
+			jobDetail['durationInHr']  = jobDetail['durationInSec']/1000/60/60
+			if (jobDetail['deviceId'] != "NA" ){
+				if (jobDetail['stillRunning'] != true){
+					sumResult['totalHrs'] += jobDetail['durationInHr']
+					if (jobDetail['durationInHr'] < sumResult['minHr']){
+						sumResult['minHr'] = jobDetail['durationInHr']
+					}
+					if (jobDetail['durationInHr'] > sumResult['maxHr']){
+						sumResult['maxHr'] = jobDetail['durationInHr']
+					}
+				}else{
+					sumResult['stillRunningNo'] += 1
+				}
+			}else{
+				sumResult['failedAllocateDeviceNo'] += 1
 			}
 			runDetailList.add(jobDetail)
 		}
 	}
 
-	sumResult['avgHr'] = sumResult['totalHrs'] / sumResult['totalNo']
+	sumResult['avgHr'] = sumResult['totalHrs'] / (sumResult['totalNo'] - sumResult['failedAllocateDeviceNo'] - sumResult['stillRunningNo'])
 	return [runDetailList, sumResult]
 }
 
-def createChartImgFile(runList, imgFolderPath){
- 
+def getCurrentRunningTime(filePath){
+	runningTime = 0
+	fileCtnt = new File(filePath).text
+	idIndicator = fileCtnt.lastIndexOf('Current MTBF Time:')
+        if (idIndicator >= 0){
+                tmpString = fileCtnt.getAt(idIndicator..idIndicator+40)
+                runningTime = Float.parseFloat(tmpString.getAt(tmpString.indexOf(':')+1..tmpString.indexOf('seconds')-1))
+        }
+        return runningTime
 
+
+}
+
+def getDeviceId(filePath){
+	deviceId = 'NA'
+	fileCtnt = new File(filePath).text
+	idIndicator = fileCtnt.indexOf('serial')
+	if (idIndicator >= 0){
+		tmpString = fileCtnt.getAt(idIndicator..idIndicator+25)
+        	deviceId = tmpString.getAt(tmpString.indexOf('[')+1..tmpString.indexOf(']')-1)
+	}
+	return deviceId
+}
+
+def createChartImgFile(runList, imgFolderPath){
 	chartDataset = new DefaultCategoryDataset()
 	chartImagePath = [imgFolderPath, "chart.png"].join(File.separator)
-
 	for (jobCtnt in runList.reverse()) {
 		chartDataset.addValue(jobCtnt['durationInHr'], jobCtnt['deviceId'], jobCtnt['buildID'].getAt(0..9))
 	}
@@ -84,6 +109,7 @@ def createChartImgFile(runList, imgFolderPath){
 	pngFile = new File(chartImagePath)
 	ChartUtilities.saveChartAsPNG(pngFile,lineChart,1000,400)
 }
+
 %>
 <!DOCTYPE html>
 <html>
@@ -94,10 +120,12 @@ def createChartImgFile(runList, imgFolderPath){
 <body>
 <table style="width:100% " border="1" cellpading="1px" cellspacing="1px">
   <tr>
-    <th colspan="5" rowspan="1">Summary</th>
+    <th colspan="7" rowspan="1">Summary</th>
   </tr>
   <tr>
      <th>Build no in total</th>
+     <th>Failed allocate device no</th>
+     <th>Still Running no</th>
      <th>Total running hours</th>
      <th>Min running time (hour)</th>
      <th>Max running time (hour)</th>
@@ -105,6 +133,8 @@ def createChartImgFile(runList, imgFolderPath){
   </tr>
   <tr>
      <th>${summaryResult['totalNo']}</th>
+     <th>${summaryResult['failedAllocateDeviceNo']}</th>
+     <th>${summaryResult['stillRunningNo']}</th>
      <th>${summaryResult['totalHrs']}</th>
      <th>${summaryResult['minHr']}</th>
      <th>${summaryResult['maxHr']}</th>
