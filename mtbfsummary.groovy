@@ -9,6 +9,9 @@ now = Calendar.instance
 oneWeekInSec = 60 * 60 * 24 * 7
 mtbfopJobName = "flamekk.v2.2.moztwlab01.319.mtbf_op"
 summaryJobName = "Send MTBF Summary Report"
+nodeName = "moztwlab-01"
+nodePwd  = "NIGHT77market"
+nodeUser = "mozilla"
 
 jobDetailList = []
 summaryResult = [:]
@@ -19,17 +22,18 @@ def main(){
 	mtbfopJob  = Jenkins.instance.getJob(mtbfopJobName)
 	summaryJob = Jenkins.instance.getJob(summaryJobName)
 
-	consoleLogFolderPath = [ mtbfopJob.getBuildDir().getParent(), 'configurations', 'axis-label', 'moztwlab-01', 'builds'].join(File.separator)
+	consoleLogFolderPath = [ mtbfopJob.getBuildDir().getParent(), 'configurations', 'axis-label', nodeName, 'builds'].join(File.separator)
 	chartImgFolderPath = summaryJob.lastBuild.workspace 
 
 	(jobDetailList, summaryResult) = getRunDetailAndSummary(mtbfopJob, consoleLogFolderPath)
 	createChartImgFile(jobDetailList, chartImgFolderPath)
+	getCrashNumber("e481d845")
 }
 
 
 def getRunDetailAndSummary(jobObj, logDirPath){
 	runDetailList = []
-	sumResult = [totalNo:0, totalHrs:0, minHr:9999999, maxHr:-1, failedAllocateDeviceNo:0, stillRunningNo:0]
+	sumResult = [totalNo:0, totalHrs:0, minHr:9999999, maxHr:-1, failedAllocateDeviceNo:0, stillRunningNo:0, totalCrashNo:0]
 	for (build in jobObj.getBuilds()) {
 		if (now.time.time/1000 - build.getTimestamp().time.time/1000 < oneWeekInSec){
 			jobDetail = [:]
@@ -46,11 +50,11 @@ def getRunDetailAndSummary(jobObj, logDirPath){
 			consoleLogPath = [logDirPath, jobDetail['buildNO'], 'log'].join(File.separator)
 			jobDetail['deviceId'] = getDeviceId(consoleLogPath)
 			if (jobDetail['stillRunning'] == false){
-				jobDetail['durationInSec'] = build.duration
+				jobDetail['durationInSec'] = Math.round(build.duration/1000*100)/100
 			}else{
-				jobDetail['durationInSec'] = getCurrentRunningTime(consoleLogPath)
+				jobDetail['durationInSec'] = Math.round(getCurrentRunningTime(consoleLogPath)*100)/100
 			}
-			jobDetail['durationInHr']  = jobDetail['durationInSec']/1000/60/60
+			jobDetail['durationInHr']  = Math.round(jobDetail['durationInSec']/60/60*100)/100
 			if (jobDetail['deviceId'] != "NA" ){
 				if (jobDetail['stillRunning'] != true){
 					sumResult['totalHrs'] += jobDetail['durationInHr']
@@ -63,14 +67,17 @@ def getRunDetailAndSummary(jobObj, logDirPath){
 				}else{
 					sumResult['stillRunningNo'] += 1
 				}
+				jobDetail['crashNo'] = getCrashNumber(jobDetail['deviceId'])
+				sumResult['totalCrashNo'] += jobDetail['crashNo']['no']
 			}else{
+				jobDetail['crashNo'] = [no:0,status:"NA"]
 				sumResult['failedAllocateDeviceNo'] += 1
 			}
 			runDetailList.add(jobDetail)
 		}
 	}
 
-	sumResult['avgHr'] = sumResult['totalHrs'] / (sumResult['totalNo'] - sumResult['failedAllocateDeviceNo'] - sumResult['stillRunningNo'])
+	sumResult['avgHr'] = Math.round(sumResult['totalHrs'] / (sumResult['totalNo'] - sumResult['failedAllocateDeviceNo'] - sumResult['stillRunningNo']) * 100)/100
 	return [runDetailList, sumResult]
 }
 
@@ -110,6 +117,35 @@ def createChartImgFile(runList, imgFolderPath){
 	ChartUtilities.saveChartAsPNG(pngFile,lineChart,1000,400)
 }
 
+def getCrashNumber(deviceId){
+	crashCount = 0
+	crashReportDirList = ["pending", "submitted"]
+	chkDeviceCmdString = ["adb", "devices" ].join(" ")
+	chkOutput = execRemoteCmdViaSsh(nodeUser, nodeName, nodePwd, chkDeviceCmdString)	
+	if (chkOutput.contains(deviceId)){
+		for (dirName in crashReportDirList){
+			crashReportDirPath = "/data/b2g/mozilla/Crash\\\\ Reports/" + dirName + "/"
+			remoteCmdString    = ["adb", "-s", deviceId, "shell", "ls", "-l", crashReportDirPath].join(" ")
+			execOut = execRemoteCmdViaSsh(nodeUser, nodeName, nodePwd, remoteCmdString)
+			if (!(execOut.contains("No such"))){
+				tmpCount = execOut.split("txt").size() - 1
+				crashCount += tmpCount
+			}
+		}
+		return [no:crashCount, status:crashCount]
+	}else{
+		return [no:0, status:"Can't get data via ADB"]
+	}
+}
+
+def execRemoteCmdViaSsh(userName, rHost, rPwd, execCmd){
+	sshLoginCmd  =  "ssh ${userName}@${rHost}"
+	expectString = ["spawn", sshLoginCmd, execCmd, ";", "expect", "password",";", "send", '"' + rPwd + "\n" + '"', ";", "expect", rHost, ";"].join(" ")
+	shellProcess = ["expect", "-c", expectString].execute()
+	shellProcess.waitFor()
+	return shellProcess.text
+}
+
 %>
 <!DOCTYPE html>
 <html>
@@ -120,13 +156,14 @@ def createChartImgFile(runList, imgFolderPath){
 <body>
 <table style="width:100% " border="1" cellpading="1px" cellspacing="1px">
   <tr>
-    <th colspan="7" rowspan="1">Summary</th>
+    <th colspan="8" rowspan="1">Summary</th>
   </tr>
   <tr>
      <th>Build no in total</th>
      <th>Failed allocate device no</th>
      <th>Still Running no</th>
      <th>Total running hours</th>
+     <th>Total crash no</th>
      <th>Min running time (hour)</th>
      <th>Max running time (hour)</th>
      <th>Avg running time (hour)</th>
@@ -136,6 +173,7 @@ def createChartImgFile(runList, imgFolderPath){
      <th>${summaryResult['failedAllocateDeviceNo']}</th>
      <th>${summaryResult['stillRunningNo']}</th>
      <th>${summaryResult['totalHrs']}</th>
+     <th>${summaryResult['totalCrashNo']}</th>
      <th>${summaryResult['minHr']}</th>
      <th>${summaryResult['maxHr']}</th>
      <th>${summaryResult['avgHr']}</th>
@@ -150,6 +188,7 @@ def createChartImgFile(runList, imgFolderPath){
     <th colspan="1" rowspan="2">Device ID</th>
     <th colspan="1" rowspan="2">Running Time (sec)</th>
     <th colspan="1" rowspan="2">Running Time (hour)</th>
+    <th colspan="1" rowspan="2">Crash no</th>
     <th colspan="1" rowspan="2">Still Running?</th>
   </tr>
   <tr>
@@ -167,6 +206,7 @@ def createChartImgFile(runList, imgFolderPath){
     <td>${jobDetail['deviceId']}</td>		
     <td>${jobDetail['durationInSec']}</td>
     <td>${jobDetail['durationInHr']}</td>
+    <td>${jobDetail['crashNo']['status']}</td>
     <td>${jobDetail['stillRunning']}</td>
   </tr>
 <% } %>
