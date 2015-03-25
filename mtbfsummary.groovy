@@ -27,7 +27,6 @@ def main(){
 
 	(jobDetailList, summaryResult) = getRunDetailAndSummary(mtbfopJob, consoleLogFolderPath)
 	createChartImgFile(jobDetailList, chartImgFolderPath)
-	getCrashNumber("e481d845")
 }
 
 
@@ -67,7 +66,7 @@ def getRunDetailAndSummary(jobObj, logDirPath){
 				}else{
 					sumResult['stillRunningNo'] += 1
 				}
-				jobDetail['crashNo'] = getCrashNumber(jobDetail['deviceId'])
+				jobDetail['crashNo'] = getCrashNumber(consoleLogPath)
 				sumResult['totalCrashNo'] += jobDetail['crashNo']['no']
 			}else{
 				jobDetail['crashNo'] = [no:0,status:"NA"]
@@ -117,24 +116,24 @@ def createChartImgFile(runList, imgFolderPath){
 	ChartUtilities.saveChartAsPNG(pngFile,lineChart,1000,400)
 }
 
-def getCrashNumber(deviceId){
-	crashCount = 0
-	crashReportDirList = ["pending", "submitted"]
-	chkDeviceCmdString = ["adb", "devices" ].join(" ")
-	chkOutput = execRemoteCmdViaSsh(nodeUser, nodeName, nodePwd, chkDeviceCmdString)	
-	if (chkOutput.contains(deviceId)){
-		for (dirName in crashReportDirList){
-			crashReportDirPath = "/data/b2g/mozilla/Crash\\\\ Reports/" + dirName + "/"
-			remoteCmdString    = ["adb", "-s", deviceId, "shell", "ls", "-l", crashReportDirPath].join(" ")
-			execOut = execRemoteCmdViaSsh(nodeUser, nodeName, nodePwd, remoteCmdString)
-			if (!(execOut.contains("No such"))){
-				tmpCount = execOut.split("txt").size() - 1
-				crashCount += tmpCount
+def getCrashNumber(filePath){
+	result = [no:0, status:0]
+	fileCtnt = new File(filePath).text
+	idIndicator = fileCtnt.lastIndexOf('CrashReportFound') 
+	if (idIndicator >= 0){
+		tmpString = fileCtnt.getAt(idIndicator..idIndicator+65)
+		crashNo = tmpString.getAt(tmpString.indexOf('has')+4..tmpString.indexOf('crashes')-1).toInteger()
+		return [no:crashNo, status:crashNo]
+	}else{	
+		if (fileCtnt.lastIndexOf("CrashReportNotFound") >= 0){
+			return [no:0, status:0]
+		}else{
+			if (fileCtnt.lastIndexOf("collect_report: can't find device in ADB list") >= 0){
+				return [no:0, status:"Can't get data via ADB"]
+			}else{
+				return [no:0, status:"Can't find crash report keyword in console log"]
 			}
 		}
-		return [no:crashCount, status:crashCount]
-	}else{
-		return [no:0, status:"Can't get data via ADB"]
 	}
 }
 
