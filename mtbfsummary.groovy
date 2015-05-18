@@ -6,7 +6,7 @@ import org.jfree.chart.ChartUtilities
 import org.jfree.data.category.DefaultCategoryDataset
 import hudson.model.*
 now = Calendar.instance
-oneWeekInSec = 60 * 60 * 24 * 7
+oneWeekInSec = 60 * 60 * 24 * 10
 mtbfopJobName = "flamekk.v2.2.moztwlab01.319.mtbf_op"
 summaryJobName = "Send MTBF Summary Report"
 nodeName = "moztwlab-01"
@@ -45,6 +45,7 @@ def getRunDetailAndSummary(jobObj, logDirPath){
 			}
 			jobDetail['memSize'] = build.getEnvVars()['MEMORYSIZE']
 			jobDetail['buildID'] = build.getId()
+			jobDetail['buildTimeStamp'] = build.getTime().format('yyyy-M-d_H_m_s')
 			jobDetail['buildNO'] = build.number
 			consoleLogPath = [logDirPath, jobDetail['buildNO'], 'log'].join(File.separator)
 			jobDetail['deviceId'] = getDeviceId(consoleLogPath)
@@ -84,9 +85,12 @@ def getCurrentRunningTime(filePath){
 	runningTime = 0
 	fileCtnt = new File(filePath).text
 	idIndicator = fileCtnt.lastIndexOf('Current MTBF Time:')
+	if (idIndicator+40 >= fileCtnt.length()){
+		idIndicator = fileCtnt.lastIndexOf('Current MTBF Time:', idIndicator - 1)
+	}
         if (idIndicator >= 0){
-                tmpString = fileCtnt.getAt(idIndicator..idIndicator+40)
-                runningTime = Float.parseFloat(tmpString.getAt(tmpString.indexOf(':')+1..tmpString.indexOf('seconds')-1))
+	        tmpString = fileCtnt.getAt(idIndicator..idIndicator+40)
+       	        runningTime = Float.parseFloat(tmpString.getAt(tmpString.indexOf(':')+1..tmpString.indexOf('seconds')-1))
         }
         return runningTime
 
@@ -95,11 +99,14 @@ def getCurrentRunningTime(filePath){
 
 def getDeviceId(filePath){
 	deviceId = 'NA'
-	fileCtnt = new File(filePath).text
-	idIndicator = fileCtnt.indexOf('serial')
-	if (idIndicator >= 0){
-		tmpString = fileCtnt.getAt(idIndicator..idIndicator+25)
-        	deviceId = tmpString.getAt(tmpString.indexOf('[')+1..tmpString.indexOf(']')-1)
+	fileObj  = new File(filePath)
+	if (fileObj.exists()){
+		fileCtnt = fileObj.text
+		idIndicator = fileCtnt.indexOf('serial')
+		if (idIndicator >= 0){
+			tmpString = fileCtnt.getAt(idIndicator..idIndicator+25)
+        		deviceId = tmpString.getAt(tmpString.indexOf('[')+1..tmpString.indexOf(']')-1)
+		}
 	}
 	return deviceId
 }
@@ -108,7 +115,7 @@ def createChartImgFile(runList, imgFolderPath){
 	chartDataset = new DefaultCategoryDataset()
 	chartImagePath = [imgFolderPath, "chart.png"].join(File.separator)
 	for (jobCtnt in runList.reverse()) {
-		chartDataset.addValue(jobCtnt['durationInHr'], jobCtnt['deviceId'], jobCtnt['buildID'].getAt(0..9))
+		chartDataset.addValue(jobCtnt['durationInHr'], jobCtnt['deviceId'], jobCtnt['buildTimeStamp'].getAt(0..9))
 	}
 	lineChart = ChartFactory.createLineChart(*["Line Chart","Date","Running Hrs"], chartDataset, Orientation.VERTICAL, *[true,true,true])
 	lineChart.setBackgroundPaint(Color.white)
@@ -118,22 +125,27 @@ def createChartImgFile(runList, imgFolderPath){
 
 def getCrashNumber(filePath){
 	result = [no:0, status:0]
-	fileCtnt = new File(filePath).text
-	idIndicator = fileCtnt.lastIndexOf('CrashReportFound') 
-	if (idIndicator >= 0){
-		tmpString = fileCtnt.getAt(idIndicator..idIndicator+65)
-		crashNo = tmpString.getAt(tmpString.indexOf('has')+4..tmpString.indexOf('crashes')-1).toInteger()
-		return [no:crashNo, status:crashNo]
-	}else{	
-		if (fileCtnt.lastIndexOf("CrashReportNotFound") >= 0){
-			return [no:0, status:0]
-		}else{
-			if (fileCtnt.lastIndexOf("collect_report: can't find device in ADB list") >= 0){
-				return [no:0, status:"Can't get data via ADB"]
+	fileObj = new File(filePath)
+	if (fileObj.exists()){
+		fileCtnt = fileObj.text
+		idIndicator = fileCtnt.lastIndexOf('CrashReportFound') 
+		if (idIndicator >= 0){
+			tmpString = fileCtnt.getAt(idIndicator..idIndicator+65)
+			crashNo = tmpString.getAt(tmpString.indexOf('has')+4..tmpString.indexOf('crashes')-1).toInteger()
+			return [no:crashNo, status:crashNo]
+		}else{	
+			if (fileCtnt.lastIndexOf("CrashReportNotFound") >= 0){
+				return [no:0, status:0]
 			}else{
-				return [no:0, status:"Can't find crash report keyword in console log"]
+				if (fileCtnt.lastIndexOf("CrashReportAdbError") >= 0){
+					return [no:0, status:"Can't get data via ADB"]
+				}else{
+					return [no:0, status:"Can't find crash report keyword in console log"]
+				}
 			}
 		}
+	}else{
+		return [no:0, status:"Can't find console log file"]
 	}
 }
 
