@@ -84,14 +84,36 @@ def getRunDetailAndSummary(jobObj, logDirPath){
 def getCurrentRunningTime(filePath){
 	runningTime = 0
 	fileCtnt = new File(filePath).text
-	idIndicator = fileCtnt.lastIndexOf('Current MTBF Time:')
-	if (idIndicator+40 >= fileCtnt.length()){
-		idIndicator = fileCtnt.lastIndexOf('Current MTBF Time:', idIndicator - 1)
+	keyword = 'mtbf_operation: Total MTBF Time:'
+	idIndicator = fileCtnt.lastIndexOf(keyword)
+ 	if (idIndicator >= 0){
+		if (idIndicator+55 >= fileCtnt.length()){
+	                idIndicator = fileCtnt.lastIndexOf(keyword, idIndicator - 1)
+        	}
+	        if (idIndicator >= 0){
+        	        tmpString = fileCtnt.getAt(idIndicator..idIndicator+55)
+                	runningTime = Float.parseFloat(tmpString.getAt(tmpString.indexOf(':')+1..tmpString.indexOf('seconds')-1))
+        	}		
+		idIndicator = fileCtnt.lastIndexOf('Current MTBF Time:')
+                if (idIndicator+40 >= fileCtnt.length()){
+                        idIndicator = fileCtnt.lastIndexOf('Current MTBF Time:', idIndicator - 1)
+                }
+                if (idIndicator >= 0){
+                        tmpString = fileCtnt.getAt(idIndicator..idIndicator+40)
+                        incrementRunningTime = Float.parseFloat(tmpString.getAt(tmpString.indexOf(':')+1..tmpString.indexOf('seconds')-1))
+                }
+		runningTime+=incrementRunningTime
 	}
-        if (idIndicator >= 0){
-	        tmpString = fileCtnt.getAt(idIndicator..idIndicator+40)
-       	        runningTime = Float.parseFloat(tmpString.getAt(tmpString.indexOf(':')+1..tmpString.indexOf('seconds')-1))
-        }
+	else{
+		idIndicator = fileCtnt.lastIndexOf('Current MTBF Time:')
+		if (idIndicator+40 >= fileCtnt.length()){
+			idIndicator = fileCtnt.lastIndexOf('Current MTBF Time:', idIndicator - 1)
+		}
+        	if (idIndicator >= 0){
+	        	tmpString = fileCtnt.getAt(idIndicator..idIndicator+40)
+	       	        runningTime = Float.parseFloat(tmpString.getAt(tmpString.indexOf(':')+1..tmpString.indexOf('seconds')-1))
+        	}
+	}
         return runningTime
 
 
