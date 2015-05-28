@@ -76,8 +76,12 @@ def getRunDetailAndSummary(jobObj, logDirPath){
 			runDetailList.add(jobDetail)
 		}
 	}
-
-	sumResult['avgHr'] = Math.round(sumResult['totalHrs'] / (sumResult['totalNo'] - sumResult['failedAllocateDeviceNo'] - sumResult['stillRunningNo']) * 100)/100
+        if ((sumResult['totalNo'] - sumResult['failedAllocateDeviceNo'] - sumResult['stillRunningNo']) == 0)
+        {
+                sumResult['avgHr'] = 0
+        }else{
+                sumResult['avgHr'] = Math.round(sumResult['totalHrs'] / (sumResult['totalNo'] - sumResult['failedAllocateDeviceNo'] - sumResult['stillRunningNo']) * 100)/100
+        }
 	return [runDetailList, sumResult]
 }
 
