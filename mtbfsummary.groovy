@@ -7,7 +7,8 @@ import org.jfree.data.category.DefaultCategoryDataset
 import hudson.model.*
 now = Calendar.instance
 oneWeekInSec = 60 * 60 * 24 * 10
-mtbfopJobName = "flamekk.v2.2.moztwlab01.319.mtbf_op"
+oneDayInSec = 60 * 60 * 24
+mtbfopJobName = "flamekk.vmaster.moztwlab01.512"
 summaryJobName = "Send MTBF Summary Report"
 nodeName = "moztwlab-01"
 nodePwd  = "NIGHT77market"
@@ -34,7 +35,7 @@ def getRunDetailAndSummary(jobObj, logDirPath){
 	runDetailList = []
 	sumResult = [totalNo:0, totalHrs:0, minHr:9999999, maxHr:-1, failedAllocateDeviceNo:0, stillRunningNo:0, totalCrashNo:0]
 	for (build in jobObj.getBuilds()) {
-		if (now.time.time/1000 - build.getTimestamp().time.time/1000 < oneWeekInSec){
+		if (now.time.time/1000 - build.getTimestamp().time.time/1000 < 3 * oneDayInSec){
 			jobDetail = [:]
 			sumResult['totalNo'] += 1
 			jobDetail['stillRunning']  = build.isInProgress()
@@ -79,6 +80,8 @@ def getRunDetailAndSummary(jobObj, logDirPath){
         if ((sumResult['totalNo'] - sumResult['failedAllocateDeviceNo'] - sumResult['stillRunningNo']) == 0)
         {
                 sumResult['avgHr'] = 0
+                sumResult['minHr'] = 0
+		sumResult['maxHr'] = 0
         }else{
                 sumResult['avgHr'] = Math.round(sumResult['totalHrs'] / (sumResult['totalNo'] - sumResult['failedAllocateDeviceNo'] - sumResult['stillRunningNo']) * 100)/100
         }
@@ -156,8 +159,13 @@ def getCrashNumber(filePath){
 		fileCtnt = fileObj.text
 		idIndicator = fileCtnt.lastIndexOf('CrashReportFound') 
 		if (idIndicator >= 0){
-			tmpString = fileCtnt.getAt(idIndicator..idIndicator+65)
-			crashNo = tmpString.getAt(tmpString.indexOf('has')+4..tmpString.indexOf('crashes')-1).toInteger()
+			if (idIndicator+65 <= fileCtnt.length()){
+				tmpString = fileCtnt.getAt(idIndicator..idIndicator+65)
+				crashNo = tmpString.getAt(tmpString.indexOf('has')+4..tmpString.indexOf('crashes')-1).toInteger()
+	                 }else{
+				tmpString = fileCtnt.getAt(idIndicator..fileCtnt.length())
+				crashNo = tmpString.getAt(tmpString.indexOf('has')+4..tmpString.indexOf('crashes')-1).toInteger()
+			}
 			return [no:crashNo, status:crashNo]
 		}else{	
 			if (fileCtnt.lastIndexOf("CrashReportNotFound") >= 0){
