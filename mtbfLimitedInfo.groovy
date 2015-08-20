@@ -34,27 +34,30 @@ def getBuildInfo(jobObj, logDirPath){
         result = [buildId:"", buildDate:""]
 	builds = getBuildObjInDuration(jobObj)
         if (builds.size() > 0){
-		build = builds[0]
-		consoleLogPath =  [logDirPath, build.number, 'log'].join(File.separator)
-		result['buildDate'] = build.getTime().format('yyyy-M-d')
-        	fileObj = new File(consoleLogPath)
-	        if (fileObj.exists()){
-        	        fileCtnt = fileObj.text
-                	idIndicator = fileCtnt.indexOf('Build ID')
-	                if (idIndicator >= 0){
-        	                if (idIndicator+23 <= fileCtnt.length()){
-                	                tmpString = fileCtnt.getAt(idIndicator+9..idIndicator+23)
-					result['buildId'] = tmpString
-	                         }else{
-        	                        tmpString = fileCtnt.getAt(idIndicator+9..fileCtnt.length())
-					result['buildId'] = tmpString
-	                        }
-        	        }else{
+		for (build in builds){
+			consoleLogPath =  [logDirPath, build.number, 'log'].join(File.separator)
+			result['buildDate'] = build.getTime().format('yyyy-M-d')
+        		fileObj = new File(consoleLogPath)
+		        if (fileObj.exists()){
+        		        fileCtnt = fileObj.text
+                		idIndicator = fileCtnt.indexOf('Build ID')
+	                	if (idIndicator >= 0){
+        	                	if (idIndicator+23 <= fileCtnt.length()){
+                	                	tmpString = fileCtnt.getAt(idIndicator+9..idIndicator+23)
+						result['buildId'] = tmpString
+						break
+		                         }else{
+        		                        tmpString = fileCtnt.getAt(idIndicator+9..fileCtnt.length())
+						result['buildId'] = tmpString
+						break
+	                        	}
+	        	        }else{
+					result['buildId'] = "Can't find build id in console log"
+	        	        }
+	        	}else{
 				result['buildId'] = "Can't find build id in console log"
-	                }
-        	}else{
-			result['buildId'] = "Can't find build id in console log"
-	        }
+	        	}
+		}
 	}else{
 		result['buildId'] = "No build today!"
 		result['buildDate'] = "No build today!"
