@@ -243,6 +243,9 @@ def getCrashNumber(filePath){
   <td><h3>Build Date</h3></td>
   <td><h2>${buildInfo['buildDate']}</h2></td>
   </tr>
+  <tr><td colspan="3"> * You could also get MTBF data on Raptor from the link here:
+  <a href="https://raptor.mozilla.org/dashboard/script/mtbf?var-device=flame-kk&var-memory=512&var-branch=master">Raptor</a>
+  </td></tr>
 </table>
 
 </body>
